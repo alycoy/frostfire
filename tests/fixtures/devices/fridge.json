@@ -1,0 +1,286 @@
+{
+ "profile": {
+  "property": {
+   "powerSave": {
+    "powerSaveEnabled": {
+     "type": "boolean",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       true,
+       false
+      ],
+      "w": [
+       true,
+       false
+      ]
+     }
+    }
+   },
+   "ecoFriendly": {
+    "ecoFriendlyMode": {
+     "type": "boolean",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       true,
+       false
+      ],
+      "w": [
+       true,
+       false
+      ]
+     }
+    }
+   },
+   "sabbath": {
+    "sabbathMode": {
+     "type": "boolean",
+     "mode": [
+      "r"
+     ],
+     "value": {
+      "r": [
+       true,
+       false
+      ]
+     }
+    }
+   },
+   "refrigeration": {
+    "expressMode": {
+     "type": "boolean",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       true,
+       false
+      ],
+      "w": [
+       true,
+       false
+      ]
+     }
+    },
+    "rapidFreeze": {
+     "type": "boolean",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       true,
+       false
+      ],
+      "w": [
+       true,
+       false
+      ]
+     }
+    },
+    "freshAirFilter": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "OFF",
+       "AUTO",
+       "POWER",
+       "REPLACE"
+      ],
+      "w": [
+       "OFF",
+       "AUTO",
+       "POWER"
+      ]
+     }
+    }
+   },
+   "waterFilterInfo": {
+    "usedTime": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    },
+    "unit": "MONTH"
+   },
+   "doorStatus": [
+    {
+     "locationName": "MAIN",
+     "doorState": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "OPEN",
+        "CLOSE"
+       ]
+      }
+     }
+    }
+   ],
+   "temperatureInUnits": [
+    {
+     "locationName": "FRIDGE",
+     "targetTemperatureC": {
+      "type": "range",
+      "mode": [
+       "r",
+       "w"
+      ],
+      "value": {
+       "r": {
+        "min": 1,
+        "max": 7,
+        "step": 1
+       },
+       "w": {
+        "min": 1,
+        "max": 7,
+        "step": 1
+       }
+      }
+     },
+     "targetTemperatureF": {
+      "type": "range",
+      "mode": [
+       "r",
+       "w"
+      ],
+      "value": {
+       "r": {
+        "min": 33,
+        "max": 43,
+        "step": 1
+       },
+       "w": {
+        "min": 33,
+        "max": 43,
+        "step": 1
+       }
+      }
+     },
+     "unit": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "C",
+        "F"
+       ]
+      }
+     }
+    },
+    {
+     "locationName": "FREEZER",
+     "targetTemperatureC": {
+      "type": "range",
+      "mode": [
+       "r",
+       "w"
+      ],
+      "value": {
+       "r": {
+        "min": -23,
+        "max": -15,
+        "step": 1
+       },
+       "w": {
+        "min": -23,
+        "max": -15,
+        "step": 1
+       }
+      }
+     },
+     "targetTemperatureF": {
+      "type": "range",
+      "mode": [
+       "r",
+       "w"
+      ],
+      "value": {
+       "r": {
+        "min": -8,
+        "max": 5,
+        "step": 1
+       },
+       "w": {
+        "min": -8,
+        "max": 5,
+        "step": 1
+       }
+      }
+     },
+     "unit": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "C",
+        "F"
+       ]
+      }
+     }
+    }
+   ]
+  }
+ },
+ "state": {
+  "powerSave": {
+   "powerSaveEnabled": false
+  },
+  "ecoFriendly": {
+   "ecoFriendlyMode": false
+  },
+  "sabbath": {
+   "sabbathMode": false
+  },
+  "refrigeration": {
+   "expressMode": false,
+   "rapidFreeze": false,
+   "freshAirFilter": "AUTO"
+  },
+  "waterFilterInfo": {
+   "usedTime": 4,
+   "unit": "MONTH"
+  },
+  "doorStatus": [
+   {
+    "locationName": "MAIN",
+    "doorState": "CLOSE"
+   }
+  ],
+  "temperatureInUnits": [
+   {
+    "locationName": "FRIDGE",
+    "targetTemperatureC": 3,
+    "unit": "C"
+   },
+   {
+    "locationName": "FREEZER",
+    "targetTemperatureC": -18,
+    "unit": "C"
+   }
+  ]
+ }
+}

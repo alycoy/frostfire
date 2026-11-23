@@ -1,0 +1,111 @@
+{
+ "profile": {
+  "property": {
+   "operation": {
+    "dehumidifierOperationMode": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "POWER_ON",
+       "POWER_OFF"
+      ],
+      "w": [
+       "POWER_ON",
+       "POWER_OFF"
+      ]
+     }
+    }
+   },
+   "dehumidifierJobMode": {
+    "currentJobMode": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "SMART_HUMIDITY",
+       "RAPID_HUMIDITY",
+       "QUIET_HUMIDITY",
+       "CLOTHES_DRY"
+      ],
+      "w": [
+       "SMART_HUMIDITY",
+       "RAPID_HUMIDITY",
+       "QUIET_HUMIDITY",
+       "CLOTHES_DRY"
+      ]
+     }
+    }
+   },
+   "humidity": {
+    "currentHumidity": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    },
+    "targetHumidity": {
+     "type": "range",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": {
+       "min": 30,
+       "max": 70,
+       "step": 5
+      },
+      "w": {
+       "min": 30,
+       "max": 70,
+       "step": 5
+      }
+     }
+    }
+   },
+   "airFlow": {
+    "windStrengthLevel": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "LOW",
+       "MID",
+       "HIGH"
+      ],
+      "w": [
+       "LOW",
+       "MID",
+       "HIGH"
+      ]
+     }
+    }
+   }
+  }
+ },
+ "state": {
+  "operation": {
+   "dehumidifierOperationMode": "POWER_ON"
+  },
+  "dehumidifierJobMode": {
+   "currentJobMode": "SMART_HUMIDITY"
+  },
+  "humidity": {
+   "currentHumidity": 58,
+   "targetHumidity": 45
+  },
+  "airFlow": {
+   "windStrengthLevel": "MID"
+  }
+ }
+}

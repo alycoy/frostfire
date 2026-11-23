@@ -1,9 +1,12 @@
-//! Frostfire: LG ThinQ air conditioners on your Mac, in the menu bar and a GPU-drawn window.
+//! Frostfire: every LG ThinQ appliance on your desktop, in a GPU-drawn window and the menu bar.
 //!
 //! `cargo run` opens it. Headless, for screenshots and checks:
-//! `cargo run -- --snap shot.png --scene cool` (scenes: welcome, country, cool, heat, auto, dry, off, settings).
+//! `cargo run -- --snap shot.png --scene cool` (scenes: welcome, country, cool, heat, auto, dry, off, settings,
+//! purifier, dehumidifier, fridge, washer, robot).
 
 #![deny(unsafe_op_in_unsafe_fn)]
+// A release build on Windows opens no console window beside the app.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod app;
 mod demo;
@@ -44,6 +47,20 @@ fn demo_ready(s: &mut App) {
     s.updated_at = Some(0.0);
 }
 
+/// Any other demo device, ready.
+fn demo_device(s: &mut App, id: &str) {
+    demo_ready(s);
+    s.select(Some(id.into()));
+    s.loading = false;
+    s.profile = None;
+    s.spec = Some(thinq::spec::Spec::parse(&demo::profile_json(id)));
+    s.state = Some(demo::initial_state(id));
+    if matches!(id, demo::DEHUMIDIFIER | demo::FRIDGE) {
+        s.energy = demo::energy_week();
+    }
+    s.updated_at = Some(0.0);
+}
+
 fn with(s: &mut App, cmd: Command) {
     if let (Some(p), Some(st)) = (s.profile.as_ref(), s.state.as_mut())
         && let Ok(payload) = cmd.payload(p, st)
@@ -55,9 +72,14 @@ fn with(s: &mut App, cmd: Command) {
 type Scene = (&'static str, fn(&mut App));
 
 const SCENES: &[Scene] = &[
-    ("welcome", |s| s.phase = Phase::Welcome),
+    // Scenes pin the country, so screenshots don't show the machine's region.
+    ("welcome", |s| {
+        s.phase = Phase::Welcome;
+        s.country = rune::TextEdit::new("US");
+    }),
     ("country", |s| {
         s.phase = Phase::Welcome;
+        s.country = rune::TextEdit::new("US");
         s.country_query = rune::TextEdit::new("bra");
     }),
     ("cool", demo_ready),
@@ -85,10 +107,15 @@ const SCENES: &[Scene] = &[
         demo_ready(s);
         s.settings = true;
     }),
+    ("purifier", |s| demo_device(s, demo::PURIFIER)),
+    ("dehumidifier", |s| demo_device(s, demo::DEHUMIDIFIER)),
+    ("fridge", |s| demo_device(s, demo::FRIDGE)),
+    ("washer", |s| demo_device(s, demo::WASHER)),
+    ("robot", |s| demo_device(s, demo::ROBOT)),
 ];
 
-/// `--dump-profiles`: prints what each air conditioner on the signed-in account reports (its
-/// profile and state), for working out what a model supports. Never prints the token.
+/// `--dump-profiles`: prints what each device on the signed-in account reports (its profile and
+/// state), for working out what a model supports. Never prints the token.
 fn dump_profiles() {
     let config = store::load_config();
     let args: Vec<String> = std::env::args().collect();
@@ -115,9 +142,9 @@ fn dump_profiles() {
             std::process::exit(1);
         }
     };
-    for d in devices.iter().filter(|d| d.kind == "DEVICE_AIR_CONDITIONER") {
+    for d in &devices {
         let short: String = d.id.chars().take(6).collect();
-        println!("=== {} ({}) {short}…", d.alias, d.model);
+        println!("=== {} · {} ({}) {short}…", d.alias, d.kind, d.model);
         for (what, v) in [("profile", client.profile(&d.id)), ("state", client.state(&d.id))] {
             match v {
                 Ok(v) => println!("--- {what}\n{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
@@ -169,9 +196,16 @@ fn main() {
             s.worker.send(Job::Restore);
             s
         })
-        // Closing the window keeps Frostfire in the menu bar (or the Dock); Quit ends it.
-        .keep_running()
         .compositor(gfx::Gfx::new(live));
+    // On macOS closing the window keeps Frostfire in the menu bar (or the Dock); Quit ends it.
+    // Windows and Linux have no menu bar item, so there closing the window quits.
+    if cfg!(target_os = "macos") {
+        app = app.keep_running();
+    }
+    // Wayland's app_id and X11's WM_CLASS, so the desktop matches the window to its
+    // io.github.alycoy.frostfire.desktop entry and icon.
+    #[cfg(target_os = "linux")]
+    rune::set_app_id("io.github.alycoy.frostfire");
     if !config.dock_icon && config.menu_bar {
         app = app.accessory();
     }

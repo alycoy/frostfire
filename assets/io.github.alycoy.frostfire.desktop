@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Frostfire
+Comment=Run your LG ThinQ appliances
+Exec=frostfire
+Icon=io.github.alycoy.frostfire
+Terminal=false
+Categories=Utility;
+Keywords=LG;ThinQ;air conditioner;appliance;
+StartupNotify=true
+StartupWMClass=io.github.alycoy.frostfire

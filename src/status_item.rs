@@ -98,23 +98,24 @@ pub fn model(app: &App) -> MenuModel {
         Row::Separator,
         Row::Action { title: "Quit Frostfire".into(), action: MenuAction::Quit, checked: false, key: "q" },
     ];
-    let (Phase::Ready, Some(profile), Some(state)) = (app.phase, app.profile.as_ref(), app.state.as_ref()) else {
+    let (Phase::Ready, Some(state)) = (app.phase, app.state.as_ref()) else {
         let info = match app.phase {
             Phase::Starting | Phase::SigningIn => "Connecting to LG ThinQ…",
             Phase::Welcome => "Not connected",
-            Phase::Ready if app.acs().is_empty() => "No air conditioners found",
+            Phase::Ready if app.devices.is_empty() => "No devices found",
             Phase::Ready => "Loading…",
         };
         let mut rows = vec![Row::Info(info.into())];
         rows.extend(tail);
-        return MenuModel { symbol: "snowflake", title: String::new(), rows };
+        return MenuModel { symbol: "house", title: String::new(), rows };
     };
+    let Some(profile) = app.profile.as_ref() else { return generic(app, tail) };
 
     let on = app.power();
     let mode = app.mode();
     let room = app.room();
     let target = app.target();
-    let name = app.current_device().map(|d| if d.alias.is_empty() { d.model.clone() } else { d.alias.clone() }).unwrap_or_default();
+    let name = app.current_device().map(|d| d.name()).unwrap_or_default();
     let doing = match (on, mode) {
         (false, _) => "Off".to_string(),
         (true, Some(m)) => label(m),
@@ -189,21 +190,7 @@ pub fn model(app: &App) -> MenuModel {
         rows.extend(extras);
     }
 
-    let acs = app.acs();
-    if acs.len() > 1 {
-        let sub = acs
-            .iter()
-            .map(|d| {
-                check(
-                    if d.alias.is_empty() { d.model.clone() } else { d.alias.clone() },
-                    MenuAction::Device(d.id.clone()),
-                    app.device.as_deref() == Some(d.id.as_str()),
-                )
-            })
-            .collect();
-        rows.push(Row::Separator);
-        rows.push(Row::Sub { title: "Air conditioner".into(), rows: sub });
-    }
+    rows.extend(devices(app));
     rows.push(Row::Separator);
     rows.push(act("Refresh", MenuAction::Refresh));
     rows.extend(tail);
@@ -216,6 +203,55 @@ pub fn model(app: &App) -> MenuModel {
     MenuModel { symbol: symbol_for(mode, on), title, rows }
 }
 
+/// The device switcher, when there's more than one.
+fn devices(app: &App) -> Vec<Row> {
+    let all = app.sorted_devices();
+    if all.len() < 2 {
+        return Vec::new();
+    }
+    let sub = all.iter().map(|d| check(d.name(), MenuAction::Device(d.id.clone()), app.device.as_deref() == Some(d.id.as_str()))).collect();
+    vec![Row::Separator, Row::Sub { title: "Device".into(), rows: sub }]
+}
+
+/// The menu for any device but an air conditioner: what it's doing, power, its dial, and the
+/// device switcher.
+fn generic(app: &App, tail: [Row; 5]) -> MenuModel {
+    let kind = app.kind().unwrap_or_else(|| crate::thinq::kinds::kind(""));
+    let on = app.power();
+    let name = app.current_device().map(|d| d.name()).unwrap_or_default();
+    let run = app.spec.as_ref().and_then(|sp| sp.find("runState", "currentState")).and_then(|f| app.value(&f.path)).and_then(|v| v.as_str().map(label));
+    let doing = run.unwrap_or_else(|| {
+        if !app.has_power() {
+            kind.name.to_string()
+        } else if on {
+            "On".into()
+        } else {
+            "Off".into()
+        }
+    });
+    let mut rows = vec![Row::Info(format!("{name} · {doing}"))];
+    let dial = app.dial();
+    if let Some((_, Some(v), suffix)) = dial {
+        rows.push(Row::Info(format!("Target {}{suffix}", fmt_temp(v))));
+    }
+    rows.push(Row::Separator);
+    if app.has_power() {
+        rows.push(act(if on { "Turn Off" } else { "Turn On" }, MenuAction::Power));
+    }
+    if let Some((r, _, suffix)) = dial {
+        rows.push(act(format!("Raise  +{}{suffix}", fmt_temp(r.step)), MenuAction::Warmer));
+        rows.push(act(format!("Lower  −{}{suffix}", fmt_temp(r.step)), MenuAction::Cooler));
+    }
+    rows.extend(devices(app));
+    rows.push(Row::Separator);
+    rows.push(act("Refresh", MenuAction::Refresh));
+    rows.extend(tail);
+    let symbol = if app.has_power() && !on { "power" } else { kind.symbol };
+    MenuModel { symbol, title: String::new(), rows }
+}
+
+// Only the macOS menu calls it; elsewhere there is no menu bar item.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn run(action: MenuAction) {
     let Some(h) = HANDLE.get() else { return };
     match action {
@@ -324,7 +360,8 @@ mod mac {
     fn show(it: &mut Item, model: &MenuModel, mtm: MainThreadMarker) {
         if let Some(button) = it.item.button(mtm) {
             if it.shown.symbol != model.symbol || it.shown.rows.is_empty() {
-                button.setImage(symbol(model.symbol).as_deref());
+                // Older macOS lacks some symbols (air.purifier): fall back so the item never goes blank.
+                button.setImage(symbol(model.symbol).or_else(|| symbol("house")).as_deref());
                 button.setImagePosition(NSCellImagePosition::ImageLeading);
             }
             let title = if model.title.is_empty() { String::new() } else { format!(" {}", model.title) };
@@ -435,7 +472,7 @@ mod tests {
             "Sleep timer",
             "Energy saver",
             "Swing",
-            "Air conditioner",
+            "Device",
         ] {
             assert!(t.iter().any(|x| x == want), "missing {want:?} in {t:?}");
         }

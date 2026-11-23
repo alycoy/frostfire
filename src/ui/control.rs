@@ -1,4 +1,4 @@
-//! A unit's pane: the dial beside what the room is doing, then every control the unit offers,
+//! An air conditioner's pane: the dial beside what the room is doing, then every control the unit offers,
 //! and only those.
 
 use rune::{El, col, el, icon, row, text};
@@ -272,7 +272,7 @@ fn subtitle(s: &App) -> String {
     }
 }
 
-fn energy(s: &App, p: P) -> El {
+pub fn energy(s: &App, p: P) -> El {
     let max = s.energy.iter().map(|(_, v)| *v).fold(1.0f64, f64::max);
     let total: f64 = s.energy.iter().map(|(_, v)| *v).sum();
     let last = s.energy.len().saturating_sub(1);
@@ -296,11 +296,11 @@ fn energy(s: &App, p: P) -> El {
     section(p, "energy", "Energy", Some(format!("Last 7 days · {:.1} kWh", total / 1000.0)), card(p, vec![chart]))
 }
 
-fn loading(s: &App, p: P) -> El {
-    let (title, msg) = if s.acs().is_empty() && !s.loading {
-        ("No air conditioners yet", "Add one in the LG ThinQ app, then refresh.")
+pub fn loading(s: &App, p: P) -> El {
+    let (title, msg) = if s.devices.is_empty() && !s.loading {
+        ("No devices yet", "Add one in the LG ThinQ app, then refresh.")
     } else {
-        ("Connecting", "Asking your air conditioner what it can do…")
+        ("Connecting", "Asking your device what it can do…")
     };
     col()
         .key("loading")

@@ -1,0 +1,150 @@
+{
+ "profile": {
+  "property": [
+   {
+    "location": {
+     "locationName": "UPPER"
+    },
+    "runState": {
+     "currentState": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "INITIAL",
+        "PREHEATING",
+        "COOKING",
+        "DONE"
+       ]
+      }
+     }
+    },
+    "operation": {
+     "ovenOperationMode": {
+      "type": "enum",
+      "mode": [
+       "w"
+      ],
+      "value": {
+       "w": [
+        "START",
+        "STOP"
+       ]
+      }
+     }
+    },
+    "temperature": [
+     {
+      "unit": "C",
+      "targetTemperature": {
+       "type": "range",
+       "mode": [
+        "r",
+        "w"
+       ],
+       "value": {
+        "r": {
+         "min": 30,
+         "max": 250,
+         "step": 5
+        },
+        "w": {
+         "min": 30,
+         "max": 250,
+         "step": 5
+        }
+       }
+      }
+     },
+     {
+      "unit": "F",
+      "targetTemperature": {
+       "type": "range",
+       "mode": [
+        "r",
+        "w"
+       ],
+       "value": {
+        "r": {
+         "min": 85,
+         "max": 480,
+         "step": 5
+        },
+        "w": {
+         "min": 85,
+         "max": 480,
+         "step": 5
+        }
+       }
+      }
+     }
+    ]
+   },
+   {
+    "location": {
+     "locationName": "LOWER"
+    },
+    "runState": {
+     "currentState": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "INITIAL",
+        "PREHEATING",
+        "COOKING",
+        "DONE"
+       ]
+      }
+     }
+    },
+    "operation": {
+     "ovenOperationMode": {
+      "type": "enum",
+      "mode": [
+       "w"
+      ],
+      "value": {
+       "w": [
+        "START",
+        "STOP"
+       ]
+      }
+     }
+    }
+   }
+  ]
+ },
+ "state": [
+  {
+   "location": {
+    "locationName": "UPPER"
+   },
+   "runState": {
+    "currentState": "INITIAL"
+   },
+   "temperature": [
+    {
+     "unit": "C",
+     "targetTemperature": 180
+    },
+    {
+     "unit": "F",
+     "targetTemperature": 355
+    }
+   ]
+  },
+  {
+   "location": {
+    "locationName": "LOWER"
+   },
+   "runState": {
+    "currentState": "INITIAL"
+   }
+  }
+ ]
+}

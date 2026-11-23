@@ -137,7 +137,7 @@ pub fn heading(size: f32, weight: f32) -> TextStyle {
 pub fn status(s: &App) -> String {
     let link = match (s.demo, s.offline, s.in_flight.is_empty()) {
         (_, _, false) => "Sending…",
-        (true, _, _) => "Demo · nothing leaves your Mac",
+        (true, _, _) => "Demo · nothing leaves this computer",
         (false, true, _) => "Offline · retrying",
         (false, false, _) => "Connected to LG ThinQ",
     };

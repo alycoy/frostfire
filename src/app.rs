@@ -7,7 +7,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use rune::{TextEdit, Tx};
 
 use crate::store::{Config, Effects};
-use crate::thinq::model::{Command, Device, Profile, State, Timer, Unit};
+use serde_json::Value;
+
+use crate::thinq::kinds::{Family, Kind};
+use crate::thinq::model::{Command, Device, Profile, Range, State, Timer, Unit};
+use crate::thinq::spec::{self, Path, Spec};
 use crate::worker::{Event, Job, Worker};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,11 +45,20 @@ pub struct App {
     pub sign_in_error: Option<String>,
     pub devices: Vec<Device>,
     pub device: Option<String>,
+    /// The AC model, for air conditioners (their own pane and the menu bar's controls).
     pub profile: Option<Profile>,
+    /// Every device's profile, read generically.
+    pub spec: Option<Spec>,
     pub state: Option<State>,
     pub energy: Vec<(String, f64)>,
     /// A target temperature being chosen (dial drag, ± presses), sent once it rests.
     pub pending_target: Option<(f64, f64)>,
+    /// A number being chosen on any other device (a stepper, the dial): path, value, when due.
+    pub pending_set: Option<(Path, f64, f64)>,
+    /// Which dropdown is open.
+    pub open_select: Option<String>,
+    /// A start that heats (an oven) waits for a second press: what, and until when.
+    pub armed: Option<(String, f64)>,
     pub seq: u64,
     pub in_flight: Vec<u64>,
     pub clock: f64,
@@ -62,6 +75,15 @@ pub struct App {
     pub menu: crate::status_item::MenuModel,
     pub offline: bool,
 }
+
+/// Where the token is kept, in the platform's words.
+pub const VAULT: &str = if cfg!(target_os = "macos") {
+    "Keychain"
+} else if cfg!(windows) {
+    "Windows Credential Manager"
+} else {
+    "system keyring"
+};
 
 /// How long a target rests before it's sent.
 const DEBOUNCE: f64 = 0.7;
@@ -83,9 +105,13 @@ impl App {
             devices: Vec::new(),
             device: None,
             profile: None,
+            spec: None,
             state: None,
             energy: Vec::new(),
             pending_target: None,
+            pending_set: None,
+            open_select: None,
+            armed: None,
             seq: 0,
             in_flight: Vec::new(),
             clock: 0.0,
@@ -106,8 +132,47 @@ impl App {
         Unit::parse(&self.config.unit).unwrap_or(Unit::C)
     }
 
-    pub fn acs(&self) -> Vec<&Device> {
-        self.devices.iter().filter(|d| d.is_ac()).collect()
+    /// Every device, by shelf (air, heat, cold, kitchen, laundry, cleaning) and then by kind,
+    /// in the account's order within a kind.
+    pub fn sorted_devices(&self) -> Vec<&Device> {
+        let mut v: Vec<&Device> = self.devices.iter().collect();
+        v.sort_by_key(|d| {
+            let k = d.kind();
+            (k.family, crate::thinq::kinds::KINDS.iter().position(|x| x.code == k.code).unwrap_or(usize::MAX))
+        });
+        v
+    }
+
+    pub fn kind(&self) -> Option<Kind> {
+        self.current_device().map(Device::kind)
+    }
+
+    /// An air conditioner, shown with its own pane.
+    pub fn is_ac(&self) -> bool {
+        self.profile.is_some()
+    }
+
+    pub fn loaded(&self) -> bool {
+        self.spec.is_some()
+    }
+
+    /// Whether the device has a power switch the app can use.
+    pub fn has_power(&self) -> bool {
+        match (&self.profile, &self.spec) {
+            (Some(p), _) => p.can_power(),
+            (None, Some(sp)) => sp.power().is_some(),
+            _ => false,
+        }
+    }
+
+    /// The value a field shows: the number being chosen, else the device's.
+    pub fn value(&self, path: &Path) -> Option<Value> {
+        if let Some((p, v, _)) = &self.pending_set
+            && p == path
+        {
+            return Some(serde_json::json!(v));
+        }
+        spec::read(&self.state.as_ref()?.0, path).cloned()
     }
 
     pub fn current_device(&self) -> Option<&Device> {
@@ -116,7 +181,29 @@ impl App {
     }
 
     pub fn power(&self) -> bool {
-        self.state.as_ref().and_then(State::power).unwrap_or(false)
+        if self.profile.is_some() {
+            return self.state.as_ref().and_then(State::power).unwrap_or(false);
+        }
+        // A device without a power switch (a fridge) is always on.
+        match self.spec.as_ref().and_then(Spec::power) {
+            Some(f) => self.value(&f.path).and_then(|v| v.as_str().map(|s| s == "POWER_ON")).unwrap_or(false),
+            None => self.spec.is_some(),
+        }
+    }
+
+    /// The dial's range, value and suffix: an AC's target temperature, or another device's one
+    /// target (a humidity to hold, a water temperature).
+    pub fn dial(&self) -> Option<(Range, Option<f64>, &'static str)> {
+        if self.profile.is_some() {
+            return self.target_spec().map(|(_, r, _)| (r, self.target(), "°"));
+        }
+        let f = self.spec.as_ref()?.dial(self.unit())?;
+        let suffix = if f.path.key.to_ascii_lowercase().contains("humidity") { "%" } else { "°" };
+        Some((f.range()?, self.value(&f.path).and_then(|v| v.as_f64()), suffix))
+    }
+
+    fn dial_path(&self) -> Option<Path> {
+        Some(self.spec.as_ref()?.dial(self.unit())?.path.clone())
     }
 
     pub fn mode(&self) -> Option<&str> {
@@ -154,11 +241,11 @@ impl App {
     }
 
     pub fn effects_moving(&self) -> bool {
-        self.config.effects != Effects::Off
-            && self.phase == Phase::Ready
-            && self.power()
-            && !self.settings
-            && matches!(self.mode(), Some("COOL" | "HEAT" | "AUTO" | "AIR_DRY" | "FAN"))
+        let base = self.config.effects != Effects::Off && self.phase == Phase::Ready && self.power() && !self.settings;
+        if self.is_ac() {
+            return base && matches!(self.mode(), Some("COOL" | "HEAT" | "AUTO" | "AIR_DRY" | "FAN"));
+        }
+        base && self.dial().is_some() && self.kind().is_some_and(|k| matches!(k.family, Family::Cold | Family::Heat))
     }
 
     // ------------------------------------------------------------------ worker answers
@@ -190,12 +277,14 @@ impl App {
             Event::SignedOut => {
                 self.reset_account();
                 self.phase = Phase::Welcome;
-                self.say("Signed out. The token was removed from your Keychain.", false);
+                self.say(&format!("Signed out. The token was removed from your {VAULT}."), false);
             }
             Event::Devices(devices) => self.set_devices(devices),
             Event::Loaded { device, profile, state } => {
                 if self.device.as_deref() == Some(device.as_str()) {
-                    self.profile = Some(profile);
+                    let ac = self.current_device().is_some_and(Device::is_ac);
+                    self.profile = ac.then(|| Profile::parse(&profile));
+                    self.spec = Some(Spec::parse(&profile));
                     self.state = Some(state);
                     self.loading = false;
                     self.offline = false;
@@ -205,7 +294,7 @@ impl App {
             }
             Event::State { device, state } => {
                 // While changes are still in flight, the unit may report the old values.
-                if self.device.as_deref() == Some(device.as_str()) && self.in_flight.is_empty() && self.pending_target.is_none() {
+                if self.device.as_deref() == Some(device.as_str()) && self.in_flight.is_empty() && self.pending_target.is_none() && self.pending_set.is_none() {
                     self.state = Some(state);
                     self.offline = false;
                     self.updated_at = Some(self.clock);
@@ -246,9 +335,9 @@ impl App {
 
     fn set_devices(&mut self, devices: Vec<Device>) {
         self.devices = devices;
-        let acs = self.acs();
-        let keep = self.device.clone().or(self.config.device.clone()).filter(|id| acs.iter().any(|d| &d.id == id));
-        let pick = keep.or_else(|| acs.first().map(|d| d.id.clone()));
+        let all = self.sorted_devices();
+        let keep = self.device.clone().or(self.config.device.clone()).filter(|id| all.iter().any(|d| &d.id == id));
+        let pick = keep.or_else(|| all.first().map(|d| d.id.clone()));
         if pick != self.device || self.profile.is_none() {
             self.select(pick);
         }
@@ -257,9 +346,13 @@ impl App {
     pub fn select(&mut self, device: Option<String>) {
         self.device = device.clone();
         self.profile = None;
+        self.spec = None;
         self.state = None;
         self.energy.clear();
         self.pending_target = None;
+        self.pending_set = None;
+        self.open_select = None;
+        self.armed = None;
         self.in_flight.clear();
         if let Some(id) = device {
             self.loading = true;
@@ -344,19 +437,79 @@ impl App {
         }
     }
 
-    pub fn toggle_power(&mut self) {
-        let on = !self.power();
-        self.send(Command::Power(on));
+    /// Sets any device's property, checked against its profile first.
+    pub fn set(&mut self, path: &Path, value: Value) {
+        let (Some(device), Some(spec), Some(state)) = (self.device.clone(), self.spec.as_ref(), self.state.as_mut()) else {
+            return;
+        };
+        match spec.payload(path, value) {
+            Ok(payload) => {
+                spec::merge(&mut state.0, &payload);
+                self.seq += 1;
+                self.in_flight.push(self.seq);
+                self.worker.send(Job::Control { device, payload, seq: self.seq });
+            }
+            Err(why) => self.say(why, true),
+        }
     }
 
-    /// Nudges the target by whole steps; sent after it rests.
+    /// An action button (start, stop, send home). A start on a device that heats or cuts needs
+    /// a second press within a few seconds.
+    pub fn act(&mut self, path: &Path, value: &str) {
+        let careful = self.kind().is_some_and(|k| k.careful) && matches!(value, "START" | "POWER_ON" | "RESUME" | "WAKE_UP");
+        let id = format!("{path:?}={value}");
+        if careful && !self.armed.as_ref().is_some_and(|(a, until)| *a == id && self.clock < *until) {
+            self.armed = Some((id, self.clock + 4.0));
+            self.say("Press again to start it. Make sure it's safe to run.", false);
+            return;
+        }
+        self.armed = None;
+        self.set(path, Value::String(value.to_string()));
+    }
+
+    /// Picks a number for a field; sent once it rests.
+    pub fn choose(&mut self, path: &Path, v: f64) {
+        let Some(r) = self.spec.as_ref().and_then(|s| s.field(path)).and_then(|f| f.range()) else { return };
+        self.pending_set = Some((path.clone(), r.snap(v), self.clock + DEBOUNCE));
+    }
+
+    /// Steps a number field by whole steps.
+    pub fn step(&mut self, path: &Path, steps: f64) {
+        let Some(r) = self.spec.as_ref().and_then(|s| s.field(path)).and_then(|f| f.range()) else { return };
+        let now = self.value(path).and_then(|v| v.as_f64()).unwrap_or(r.min);
+        self.choose(path, now + steps * r.step);
+    }
+
+    pub fn toggle_power(&mut self) {
+        let on = !self.power();
+        if self.is_ac() {
+            return self.send(Command::Power(on));
+        }
+        if let Some(path) = self.spec.as_ref().and_then(Spec::power).map(|f| f.path.clone()) {
+            self.set(&path, Value::String(if on { "POWER_ON" } else { "POWER_OFF" }.into()));
+        }
+    }
+
+    /// Nudges the dial by whole steps; sent after it rests.
     pub fn nudge(&mut self, steps: f64) {
+        if !self.is_ac() {
+            if let Some(path) = self.dial_path() {
+                self.step(&path, steps);
+            }
+            return;
+        }
         let Some((_, range, _)) = self.target_spec() else { return };
         let now = self.target().unwrap_or((range.min + range.max) / 2.0);
         self.choose_target(now + steps * range.step);
     }
 
     pub fn choose_target(&mut self, v: f64) {
+        if !self.is_ac() {
+            if let Some(path) = self.dial_path() {
+                self.choose(&path, v);
+            }
+            return;
+        }
         let Some((_, range, _)) = self.target_spec() else { return };
         self.pending_target = Some((range.snap(v), self.clock + DEBOUNCE));
     }
@@ -417,6 +570,9 @@ impl App {
     /// A one-off step from the menu: sent at once, no resting.
     fn nudge_now(&mut self, steps: f64) {
         self.nudge(steps);
+        if let Some((path, v, _)) = self.pending_set.take() {
+            return self.set(&path, serde_json::json!(v));
+        }
         if let Some((v, _)) = self.pending_target.take() {
             let unit = self.target_spec().map(|s| s.2).unwrap_or(self.unit());
             self.send(Command::Target(v, unit));
@@ -461,6 +617,21 @@ impl App {
             } else {
                 tx.wake_at(due);
             }
+        }
+
+        if let Some((path, v, due)) = self.pending_set.clone() {
+            if t >= due {
+                self.pending_set = None;
+                self.set(&path, serde_json::json!(v));
+                changed = true;
+            } else {
+                tx.wake_at(due);
+            }
+        }
+        if let Some((_, until)) = &self.armed
+            && t >= *until
+        {
+            self.armed = None;
         }
 
         if self.phase == Phase::Ready && self.device.is_some() && t >= self.next_refresh && self.in_flight.is_empty() {

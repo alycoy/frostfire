@@ -1,0 +1,114 @@
+{
+ "profile": {
+  "property": {
+   "runState": {
+    "currentState": {
+     "type": "enum",
+     "mode": [
+      "r"
+     ],
+     "value": {
+      "r": [
+       "SLEEP",
+       "STANDBY",
+       "CHARGING",
+       "WORKING",
+       "HOMING",
+       "PAUSE",
+       "ERROR"
+      ]
+     }
+    }
+   },
+   "robotCleanerJobMode": {
+    "currentJobMode": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "CLEAN_ZIGZAG",
+       "CLEAN_SPOT",
+       "CLEAN_EDGE"
+      ],
+      "w": [
+       "CLEAN_ZIGZAG",
+       "CLEAN_SPOT",
+       "CLEAN_EDGE"
+      ]
+     }
+    }
+   },
+   "operation": {
+    "cleanOperationMode": {
+     "type": "enum",
+     "mode": [
+      "w"
+     ],
+     "value": {
+      "w": [
+       "START",
+       "PAUSE",
+       "RESUME",
+       "HOMING"
+      ]
+     }
+    }
+   },
+   "battery": {
+    "level": {
+     "type": "enum",
+     "mode": [
+      "r"
+     ],
+     "value": {
+      "r": [
+       "HIGH",
+       "MID",
+       "LOW",
+       "WARNING"
+      ]
+     }
+    },
+    "percent": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    }
+   },
+   "timer": {
+    "runningHour": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    },
+    "runningMinute": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    }
+   }
+  }
+ },
+ "state": {
+  "runState": {
+   "currentState": "CHARGING"
+  },
+  "robotCleanerJobMode": {
+   "currentJobMode": "CLEAN_ZIGZAG"
+  },
+  "battery": {
+   "level": "HIGH",
+   "percent": 92
+  },
+  "timer": {
+   "runningHour": 0,
+   "runningMinute": 0
+  }
+ }
+}

@@ -11,9 +11,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 
 use crate::app::App;
-use crate::demo::{self, DemoAc};
+use crate::demo::{self, DemoDevice};
 use crate::store::{self, Config};
-use crate::thinq::model::{self, Device, Profile, State};
+use crate::thinq::model::{self, Device, State};
 use crate::thinq::{ApiError, Client, Country, Secret};
 
 pub enum Job {
@@ -48,7 +48,7 @@ pub enum Event {
     SignInFailed(String),
     SignedOut,
     Devices(Vec<Device>),
-    Loaded { device: String, profile: Profile, state: State },
+    Loaded { device: String, profile: Value, state: State },
     State { device: String, state: State },
     Energy { device: String, days: Vec<(String, f64)> },
     ControlDone { seq: u64 },
@@ -85,7 +85,7 @@ impl Worker {
 enum Backend {
     None,
     Live(Client),
-    Demo { units: HashMap<String, DemoAc>, last: Instant },
+    Demo { units: HashMap<String, DemoDevice>, last: Instant },
 }
 
 fn run(rx: Receiver<Job>, emit: impl Fn(Event)) {
@@ -114,7 +114,7 @@ fn run(rx: Receiver<Job>, emit: impl Fn(Event)) {
                 emit(Event::SignedOut);
             }
             Job::Demo => {
-                let units = demo::devices().iter().map(|d| (d.id.clone(), DemoAc::new(&d.id))).collect();
+                let units = demo::devices().iter().map(|d| (d.id.clone(), DemoDevice::new(&d.id))).collect();
                 backend = Backend::Demo { units, last: Instant::now() };
                 emit(Event::SignedIn { devices: demo::devices(), demo: true });
             }
@@ -129,7 +129,7 @@ fn run(rx: Receiver<Job>, emit: impl Fn(Event)) {
             Job::Load { device } => match &mut backend {
                 Backend::Live(c) => {
                     match c.profile(&device).and_then(|p| Ok((p, c.state(&device)?))) {
-                        Ok((p, s)) => emit(Event::Loaded { device: device.clone(), profile: Profile::parse(&p), state: State(s) }),
+                        Ok((p, s)) => emit(Event::Loaded { device: device.clone(), profile: p, state: State(s) }),
                         Err(e) => {
                             emit(failed(&e));
                             continue;
@@ -142,8 +142,8 @@ fn run(rx: Receiver<Job>, emit: impl Fn(Event)) {
                 Backend::Demo { units, last } => {
                     step_demo(units, last);
                     let Some(ac) = units.get(&device) else { continue };
-                    emit(Event::Loaded { device: device.clone(), profile: demo::profile(&device), state: ac.state.clone() });
-                    if device == demo::LIVING {
+                    emit(Event::Loaded { device: device.clone(), profile: demo::profile_json(&device), state: ac.state.clone() });
+                    if matches!(device.as_str(), demo::LIVING | demo::DEHUMIDIFIER | demo::FRIDGE) {
                         emit(Event::Energy { device, days: demo::energy_week() });
                     }
                 }
@@ -232,7 +232,7 @@ fn failed(e: &ApiError) -> Event {
     Event::Failed { message: e.friendly(), auth: e.is_auth() }
 }
 
-fn step_demo(units: &mut HashMap<String, DemoAc>, last: &mut Instant) {
+fn step_demo(units: &mut HashMap<String, DemoDevice>, last: &mut Instant) {
     let dt = last.elapsed().as_secs_f64() * 20.0; // a demo minute passes in three seconds
     *last = Instant::now();
     for ac in units.values_mut() {
