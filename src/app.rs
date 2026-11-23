@@ -470,6 +470,10 @@ impl App {
     /// Picks a number for a field; sent once it rests.
     pub fn choose(&mut self, path: &Path, v: f64) {
         let Some(r) = self.spec.as_ref().and_then(|s| s.field(path)).and_then(|f| f.range()) else { return };
+        // Another field still waiting goes now, rather than being dropped.
+        if let Some((other, pv, _)) = self.pending_set.take_if(|(p, _, _)| p != path) {
+            self.set(&other, serde_json::json!(pv));
+        }
         self.pending_set = Some((path.clone(), r.snap(v), self.clock + DEBOUNCE));
     }
 
@@ -486,7 +490,8 @@ impl App {
             return self.send(Command::Power(on));
         }
         if let Some(path) = self.spec.as_ref().and_then(Spec::power).map(|f| f.path.clone()) {
-            self.set(&path, Value::String(if on { "POWER_ON" } else { "POWER_OFF" }.into()));
+            // Through `act`, so switching on an oven takes the same second press as starting it.
+            self.act(&path, if on { "POWER_ON" } else { "POWER_OFF" });
         }
     }
 
@@ -695,6 +700,44 @@ pub fn fmt_minutes(m: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn demo_app(id: &str) -> App {
+        let mut s = App::new(Worker::detached(), None);
+        s.phase = Phase::Ready;
+        s.demo = true;
+        s.devices = crate::demo::devices();
+        s.device = Some(id.into());
+        s.spec = Some(Spec::parse(&crate::demo::profile_json(id)));
+        s.state = Some(crate::demo::initial_state(id));
+        s
+    }
+
+    #[test]
+    fn a_second_numeric_edit_sends_the_first() {
+        let mut s = demo_app(crate::demo::FRIDGE);
+        let spec = s.spec.clone().unwrap();
+        let fields: Vec<Path> = spec.fields().filter(|f| f.path.key == "targetTemperatureC").map(|f| f.path.clone()).collect();
+        s.step(&fields[0], 1.0);
+        s.step(&fields[1], -1.0);
+        assert_eq!(s.in_flight.len(), 1, "the fridge change went out");
+        assert_eq!(s.value(&fields[0]), Some(serde_json::json!(4)));
+        assert_eq!(s.pending_set.as_ref().map(|p| &p.0), Some(&fields[1]));
+    }
+
+    #[test]
+    fn switching_on_a_careful_device_takes_two_presses() {
+        let profile = serde_json::json!({"property": {"operation": {"ovenOperationMode": {"type": "enum", "mode": ["r", "w"], "value": {"r": ["POWER_ON", "POWER_OFF"], "w": ["POWER_ON", "POWER_OFF"]}}}}});
+        let mut s = App::new(Worker::detached(), None);
+        s.phase = Phase::Ready;
+        s.devices = vec![Device { id: "oven1".into(), kind: "DEVICE_OVEN".into(), model: "".into(), alias: "".into() }];
+        s.device = Some("oven1".into());
+        s.spec = Some(Spec::parse(&profile));
+        s.state = Some(State(serde_json::json!({"operation": {"ovenOperationMode": "POWER_OFF"}})));
+        s.toggle_power();
+        assert!(!s.power() && s.in_flight.is_empty(), "the first press only arms it");
+        s.toggle_power();
+        assert!(s.power());
+    }
 
     #[test]
     fn formats() {
