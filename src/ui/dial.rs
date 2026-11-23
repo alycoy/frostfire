@@ -47,11 +47,13 @@ pub fn fraction_at(x: f32, y: f32) -> f32 {
 
 pub fn view(s: &App, p: P, effects: bool) -> El {
     let m = p.m;
-    let spec = s.target_spec();
-    let target = s.target();
+    let dial = s.dial();
+    let spec = dial.map(|(r, _, _)| r);
+    let target = dial.and_then(|(_, v, _)| v);
+    let suffix = dial.map(|(_, _, s)| s).unwrap_or("°");
     let on = s.power();
     let frac = match (spec, target) {
-        (Some((_, r, _)), Some(t)) if r.max > r.min => ((t - r.min) / (r.max - r.min)).clamp(0.0, 1.0) as f32,
+        (Some(r), Some(t)) if r.max > r.min => ((t - r.min) / (r.max - r.min)).clamp(0.0, 1.0) as f32,
         _ => 0.0,
     };
 
@@ -76,8 +78,16 @@ pub fn view(s: &App, p: P, effects: bool) -> El {
     }
 
     let value = target.map(fmt_temp).unwrap_or_else(|| "––".into());
+    let family = s.kind().map(|k| k.family);
     let caption = match (on, s.mode()) {
         (false, _) => "Off".to_string(),
+        (true, _) if !s.is_ac() => match (suffix, s.kind().map(|k| k.code)) {
+            ("%", Some("DEVICE_DEHUMIDIFIER")) => "Drying to".into(),
+            ("%", Some("DEVICE_HUMIDIFIER")) => "Humidifying to".into(),
+            ("%", _) => "Humidity".into(),
+            _ if family == Some(crate::thinq::kinds::Family::Heat) => "Heating to".into(),
+            _ => "Keeping at".into(),
+        },
         (true, Some("COOL")) => "Cooling to".into(),
         (true, Some("HEAT")) => "Heating to".into(),
         (true, Some("AUTO")) => "Keeping".into(),
@@ -91,21 +101,28 @@ pub fn view(s: &App, p: P, effects: bool) -> El {
             .key("dial-value")
             .items_start()
             .child(text(value).font(heading(54.0, 300.0).features("'tnum' 1")).color(if on { p.text() } else { p.muted() }).align(Align::Center))
-            .child(text("°").font(heading(22.0, 300.0)).color(p.muted()).mt(8.0)),
+            .child(text(suffix).font(heading(22.0, 300.0)).color(p.muted()).mt(8.0)),
     );
 
-    let range = spec.map(|(_, r, _)| r);
+    let range = spec;
+    let (label, lower, higher) = if suffix == "%" {
+        ("Target humidity", "Lower", "Higher")
+    } else if s.is_ac() {
+        ("Target temperature", "Cooler", "Warmer")
+    } else {
+        ("Target temperature", "Lower", "Higher")
+    };
     let mut dial = el()
         .key("dial")
         .size(SIZE, SIZE)
         .role("slider")
-        .label("Target temperature")
+        .label(label)
         .focusable(true)
         .focus_ring(2.0, 2.0, p.k.c.border_focus)
         .radius(SIZE / 2.0)
         .cursor(rune::Cursor::Pointer)
         .on_drag(|s: &mut App, d, _| {
-            if let Some((_, r, _)) = s.target_spec() {
+            if let Some((r, _, _)) = s.dial() {
                 let f = fraction_at(d.x, d.y) as f64;
                 s.choose_target(r.min + f * (r.max - r.min));
             }
@@ -147,13 +164,18 @@ pub fn view(s: &App, p: P, effects: bool) -> El {
         .child(
             IconButton::new(&icons::MINUS)
                 .variant(IconButtonVariant::Ghost)
-                .label("Cooler")
-                .help("Cooler (↓)")
+                .label(lower)
+                .help(format!("{lower} (↓)"))
                 .on_press(|s: &mut App| s.nudge(-1.0))
                 .build(p.k),
         )
         .child(
-            IconButton::new(&icons::PLUS).variant(IconButtonVariant::Ghost).label("Warmer").help("Warmer (↑)").on_press(|s: &mut App| s.nudge(1.0)).build(p.k),
+            IconButton::new(&icons::PLUS)
+                .variant(IconButtonVariant::Ghost)
+                .label(higher)
+                .help(format!("{higher} (↑)"))
+                .on_press(|s: &mut App| s.nudge(1.0))
+                .build(p.k),
         );
     dial.child(canvas(shape).absolute(0.0, 0.0).size(SIZE, SIZE)).child(center).child(stepper)
 }

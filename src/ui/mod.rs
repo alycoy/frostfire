@@ -1,9 +1,10 @@
-//! The window, laid out like Hex: a sidebar of air conditioners and Settings, and a raised
-//! panel with the chosen one. Neutral throughout; the unit's mode tints only the dial, its icon
+//! The window, laid out like Hex: a sidebar of devices and Settings, and a raised panel with
+//! the chosen one. Neutral throughout; what the device is doing tints only the dial, its icon
 //! and the energy bars.
 
 pub mod airflow;
 pub mod control;
+pub mod device;
 pub mod dial;
 pub mod icons;
 pub mod parts;
@@ -17,7 +18,7 @@ use rune_kit::{IconButton, IconButtonVariant, Switch};
 use crate::app::{App, Phase, fmt_temp};
 use crate::store::Effects;
 use parts::P;
-use theme::{Mood, mood};
+use theme::{Mood, kind_mood, mood};
 
 /// Room for the traffic lights above the sidebar's first row.
 const SIDEBAR_TOP: f32 = 44.0;
@@ -25,7 +26,8 @@ const SIDEBAR_TOP: f32 = 44.0;
 /// The mood for the app as it is now.
 pub fn current_mood(s: &App) -> Mood {
     match s.phase {
-        Phase::Ready if s.state.is_some() => mood(s.mode(), s.power()),
+        Phase::Ready if s.state.is_some() && s.is_ac() => mood(s.mode(), s.power()),
+        Phase::Ready if s.state.is_some() => s.kind().map(|k| kind_mood(&k, s.power())).unwrap_or_else(|| mood(Some("COOL"), true)),
         _ => mood(Some("COOL"), true),
     }
 }
@@ -55,18 +57,31 @@ fn nav_item(p: P, key: String, glyph: &'static rune::Icon, tint: Option<rune::Co
 }
 
 fn sidebar(s: &App, p: P) -> El {
-    let mut list = col().key("nav").gap(2.0).child(text("Air conditioners").font(p.k.ty.small_medium).color(p.faint()).px(8.0).pb(6.0));
-    for d in s.acs() {
+    let mut list = col().key("nav").gap(2.0);
+    let mut heading: Option<&str> = None;
+    for d in s.sorted_devices() {
+        let kind = d.kind();
+        let group = kind.family.title();
+        if heading != Some(group) {
+            let first = heading.is_none();
+            heading = Some(group);
+            list = list
+                .child(text(group).key(format!("group-{group}")).font(p.k.ty.small_medium).color(p.faint()).px(8.0).pt(if first { 0.0 } else { 12.0 }).pb(6.0));
+        }
         let on = !s.settings && s.device.as_deref() == Some(d.id.as_str());
-        let name = if d.alias.is_empty() { d.model.clone() } else { d.alias.clone() };
-        let (glyph, tint, trailing) = if s.device.as_deref() == Some(d.id.as_str()) && s.state.is_some() {
+        let name = d.name();
+        let (glyph, tint, trailing) = if s.device.as_deref() == Some(d.id.as_str()) && s.state.is_some() && d.is_ac() {
             let running = s.power();
             let m = mood(s.mode(), running);
             let glyph = if running { s.mode().map(icons::for_mode).unwrap_or(&icons::POWER) } else { &icons::POWER };
             let trailing = if running { s.room().map(|r| format!("{}°", fmt_temp(r))) } else { Some("Off".into()) };
             (glyph, running.then_some(m.accent), trailing)
+        } else if s.device.as_deref() == Some(d.id.as_str()) && s.state.is_some() {
+            let running = s.power();
+            let trailing = (s.has_power() && !running).then(|| "Off".to_string());
+            (icons::for_kind(&d.kind), running.then_some(kind_mood(&kind, true).accent), trailing)
         } else {
-            (&icons::SNOW, None, None)
+            (icons::for_kind(&d.kind), None, None)
         };
         let id = d.id.clone();
         list = list.child(nav_item(p, format!("ac-{}", d.id), glyph, tint, name, trailing, on).on_press(move |s: &mut App| {
@@ -106,11 +121,7 @@ fn sidebar(s: &App, p: P) -> El {
 }
 
 fn header(s: &App, p: P) -> El {
-    let title = if s.settings {
-        "Settings".to_string()
-    } else {
-        s.current_device().map(|d| if d.alias.is_empty() { d.model.clone() } else { d.alias.clone() }).unwrap_or_else(|| "Frostfire".into())
-    };
+    let title = if s.settings { "Settings".to_string() } else { s.current_device().map(|d| d.name()).unwrap_or_else(|| "Frostfire".into()) };
     let mut bar = row()
         .key("pane-header")
         .h(52.0)
@@ -128,7 +139,7 @@ fn header(s: &App, p: P) -> El {
         }
     }
     bar = bar.child(el().grow(1.0));
-    if !s.settings && s.profile.is_some() {
+    if !s.settings && s.loaded() {
         bar = bar.child(
             IconButton::new(&icons::REFRESH)
                 .variant(IconButtonVariant::Ghost)
@@ -138,7 +149,7 @@ fn header(s: &App, p: P) -> El {
                 .build(p.k)
                 .no_window_drag(),
         );
-        if s.profile.as_ref().is_some_and(|pr| pr.can_power()) {
+        if s.has_power() {
             bar = bar.child(Switch::new(s.power()).label("Power").on_toggle(|s: &mut App| s.toggle_power()).build(p.k).no_window_drag());
         }
     }
@@ -175,6 +186,8 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
     let p = P { k: rune_theme_opencode::kit(dark), m: current_mood(s), hair: 1.0 / cx.env().scale.max(1.0), dark };
     let effects = s.config.effects != Effects::Off && !cx.is_reduced_motion();
     let c = &p.k.c;
+    // Dropdowns open above everything.
+    let mut layer: Vec<El> = Vec::new();
 
     let window = if s.phase != Phase::Ready {
         // First run: one centred card, nothing else.
@@ -186,7 +199,13 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             .child(el().h(40.0).w_full().window_drag())
             .child(scroll("welcome-scroll", col().w_full().items_center().pt(8.0).pb(32.0).child(welcome::view(s, p))))
     } else {
-        let body = if s.settings { settings::view(s, p) } else { control::view(s, p, effects) };
+        let body = if s.settings {
+            settings::view(s, p)
+        } else if s.is_ac() || !s.loaded() {
+            control::view(s, p, effects)
+        } else {
+            device::view(s, p, effects, &mut layer)
+        };
         let panel = col()
             .key("panel")
             .role("main")
@@ -205,7 +224,7 @@ pub fn view(s: &App, cx: &mut Cx<App>) -> El {
             .child(scroll("pane-scroll", body));
         row().key("window").w_full().h_full().fill(c.bg_deep).child(sidebar(s, p)).child(panel)
     };
-    let mut root = el().key("root").w_full().h_full().child(window);
+    let mut root = el().key("root").w_full().h_full().child(window).children(layer);
     if let Some(t) = toast(s, p) {
         root = root.child(t);
     }

@@ -1,8 +1,12 @@
 //! What Frostfire remembers between launches.
 //!
-//! - The ThinQ token goes in the macOS login Keychain and nowhere else.
+//! - The ThinQ token goes in the system's credential store and nowhere else: the login
+//!   Keychain on macOS, Credential Manager on Windows, the Secret Service (GNOME Keyring,
+//!   KWallet) on Linux. All three use the same service and account names.
 //! - Everything else (country, chosen device, preferences, a random client id) is a small
-//!   JSON file in `~/Library/Application Support/Frostfire/`, readable only by you (0600).
+//!   JSON file in the config directory (`~/Library/Application Support/Frostfire/` on macOS,
+//!   `%APPDATA%\Frostfire\` on Windows, `~/.config/Frostfire/` on Linux), readable only by you
+//!   (0600) where the file system has Unix permissions.
 //!
 //! Both are touched from the worker thread only, never during a frame.
 
@@ -123,18 +127,78 @@ pub fn delete_token() {
     let _ = security_framework::passwords::delete_generic_password(SERVICE, ACCOUNT);
 }
 
-// Elsewhere there's no Keychain wired up yet, so the token lives for the session only.
-#[cfg(not(target_os = "macos"))]
+// Windows and Linux reach their stores through keyring-core. Its errors' `Display` never
+// shows stored bytes (their `Debug` can), so only `Display` is used.
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+mod vault {
+    use std::sync::Arc;
+
+    use keyring_core::{CredentialStore, Entry};
+
+    use super::{ACCOUNT, SERVICE, Secret};
+
+    #[cfg(target_os = "windows")]
+    const NAME: &str = "Credential Manager";
+    #[cfg(target_os = "linux")]
+    const NAME: &str = "Secret Service";
+
+    /// The platform's store. Made per call: the Secret Service may start after Frostfire does.
+    fn store() -> keyring_core::Result<Arc<CredentialStore>> {
+        #[cfg(target_os = "windows")]
+        let store = windows_native_keyring_store::Store::new()?;
+        #[cfg(target_os = "linux")]
+        let store = zbus_secret_service_keyring_store::Store::new()?;
+        Ok(store)
+    }
+
+    fn entry_in(store: &Arc<CredentialStore>) -> keyring_core::Result<Entry> {
+        Entry::new_in_store(store, SERVICE, ACCOUNT)
+    }
+
+    pub fn load_token_in(store: &Arc<CredentialStore>) -> Option<Secret> {
+        entry_in(store).ok()?.get_password().ok().map(Secret::new)
+    }
+
+    pub fn save_token_in(store: &Arc<CredentialStore>, token: &Secret) -> Result<(), String> {
+        entry_in(store).and_then(|e| e.set_password(token.expose())).map_err(|e| format!("{NAME}: {e}"))
+    }
+
+    pub fn delete_token_in(store: &Arc<CredentialStore>) {
+        if let Ok(e) = entry_in(store) {
+            let _ = e.delete_credential();
+        }
+    }
+
+    pub fn load_token() -> Option<Secret> {
+        load_token_in(&store().ok()?)
+    }
+
+    pub fn save_token(token: &Secret) -> Result<(), String> {
+        save_token_in(&store().map_err(|e| format!("{NAME}: {e}"))?, token)
+    }
+
+    pub fn delete_token() {
+        if let Ok(s) = store() {
+            delete_token_in(&s);
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+pub use vault::{delete_token, load_token, save_token};
+
+// Anywhere else there's no store wired up, so the token lives for the session only.
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub fn load_token() -> Option<Secret> {
     None
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub fn save_token(_: &Secret) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 pub fn delete_token() {}
 
 #[cfg(test)]
@@ -164,5 +228,23 @@ mod tests {
         let c: Config = serde_json::from_str(r#"{"unit":"F","extra":1}"#).unwrap();
         assert_eq!(c.unit, "F");
         assert!(c.menu_bar);
+    }
+
+    /// The Windows and Linux glue against keyring-core's in-memory store: same service and
+    /// account, round trip, overwrite, delete. The real stores need a desktop session.
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[test]
+    fn token_round_trips_through_a_credential_store() {
+        use std::sync::Arc;
+
+        let store: Arc<keyring_core::CredentialStore> = keyring_core::mock::Store::new().unwrap();
+        assert!(vault::load_token_in(&store).is_none());
+        vault::save_token_in(&store, &Secret::new("first".into())).unwrap();
+        vault::save_token_in(&store, &Secret::new("second".into())).unwrap();
+        assert_eq!(vault::load_token_in(&store).unwrap().expose(), "second");
+        let entry = keyring_core::Entry::new_in_store(&store, SERVICE, ACCOUNT).unwrap();
+        assert_eq!(entry.get_password().unwrap(), "second");
+        vault::delete_token_in(&store);
+        assert!(vault::load_token_in(&store).is_none());
     }
 }

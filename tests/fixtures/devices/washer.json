@@ -1,0 +1,157 @@
+{
+ "profile": {
+  "property": [
+   {
+    "location": {
+     "locationName": "MAIN"
+    },
+    "runState": {
+     "currentState": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "POWER_OFF",
+        "INITIAL",
+        "PAUSE",
+        "DETECTING",
+        "RUNNING",
+        "RINSING",
+        "SPINNING",
+        "END",
+        "RESERVED",
+        "ERROR"
+       ]
+      }
+     }
+    },
+    "operation": {
+     "washerOperationMode": {
+      "type": "enum",
+      "mode": [
+       "w"
+      ],
+      "value": {
+       "w": [
+        "START",
+        "STOP",
+        "POWER_OFF"
+       ]
+      }
+     }
+    },
+    "remoteControlEnable": {
+     "remoteControlEnabled": {
+      "type": "boolean",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        true,
+        false
+       ]
+      }
+     }
+    },
+    "timer": {
+     "remainHour": {
+      "type": "number",
+      "mode": [
+       "r"
+      ]
+     },
+     "remainMinute": {
+      "type": "number",
+      "mode": [
+       "r"
+      ]
+     },
+     "totalHour": {
+      "type": "number",
+      "mode": [
+       "r"
+      ]
+     },
+     "totalMinute": {
+      "type": "number",
+      "mode": [
+       "r"
+      ]
+     },
+     "relativeHourToStart": {
+      "type": "range",
+      "mode": [
+       "r",
+       "w"
+      ],
+      "value": {
+       "r": {
+        "min": 3,
+        "max": 19,
+        "step": 1
+       },
+       "w": {
+        "min": 3,
+        "max": 19,
+        "step": 1
+       }
+      }
+     }
+    },
+    "detergent": {
+     "detergentSetting": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "NORMAL",
+        "MORE",
+        "LESS",
+        "NONE"
+       ]
+      }
+     }
+    },
+    "cycle": {
+     "cycleCount": {
+      "type": "number",
+      "mode": [
+       "r"
+      ]
+     }
+    }
+   }
+  ]
+ },
+ "state": [
+  {
+   "location": {
+    "locationName": "MAIN"
+   },
+   "runState": {
+    "currentState": "RUNNING"
+   },
+   "remoteControlEnable": {
+    "remoteControlEnabled": true
+   },
+   "timer": {
+    "remainHour": 0,
+    "remainMinute": 42,
+    "totalHour": 1,
+    "totalMinute": 20,
+    "relativeHourToStart": 0
+   },
+   "detergent": {
+    "detergentSetting": "NORMAL"
+   },
+   "cycle": {
+    "cycleCount": 214
+   }
+  }
+ ]
+}

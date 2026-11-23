@@ -97,7 +97,7 @@ pub fn view(s: &App, p: P) -> El {
         .gap(6.0)
         .child(logo)
         .child(text("Frostfire").font(heading(24.0, 650.0)).color(p.text()).mt(6.0))
-        .child(text("Your LG air conditioners, on your Mac.").font(p.k.ty.body).color(p.muted()).align(Align::Center));
+        .child(text("Your LG ThinQ home, on your desktop.").font(p.k.ty.body).color(p.muted()).align(Align::Center));
 
     let token = TextInput::new(&s.token)
         .secure()
@@ -158,7 +158,7 @@ pub fn view(s: &App, p: P) -> El {
     }
     body.child(row().w_full().justify_end().child(actions)).child(
         row().w_full().gap(6.0).items_start().child(icon(&icons::LOCK, 12.0).color(p.faint()).mt(2.0)).child(
-            text("The token goes straight into your Keychain. Frostfire talks only to LG's official ThinQ Connect servers.")
+            text(format!("The token goes straight into your {}. Frostfire talks only to LG's official ThinQ Connect servers.", crate::app::VAULT))
                 .font(p.k.ty.small)
                 .color(p.faint())
                 .wrap()

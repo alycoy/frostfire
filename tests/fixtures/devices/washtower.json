@@ -1,0 +1,82 @@
+{
+ "profile": {
+  "washer": {
+   "property": {
+    "runState": {
+     "currentState": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "INITIAL",
+        "RUNNING",
+        "END"
+       ]
+      }
+     }
+    },
+    "operation": {
+     "washerOperationMode": {
+      "type": "enum",
+      "mode": [
+       "w"
+      ],
+      "value": {
+       "w": [
+        "START",
+        "STOP"
+       ]
+      }
+     }
+    }
+   }
+  },
+  "dryer": {
+   "property": {
+    "runState": {
+     "currentState": {
+      "type": "enum",
+      "mode": [
+       "r"
+      ],
+      "value": {
+       "r": [
+        "INITIAL",
+        "DRYING",
+        "END"
+       ]
+      }
+     }
+    },
+    "operation": {
+     "dryerOperationMode": {
+      "type": "enum",
+      "mode": [
+       "w"
+      ],
+      "value": {
+       "w": [
+        "START",
+        "STOP"
+       ]
+      }
+     }
+    }
+   }
+  }
+ },
+ "state": {
+  "washer": {
+   "runState": {
+    "currentState": "END"
+   }
+  },
+  "dryer": {
+   "runState": {
+    "currentState": "DRYING"
+   }
+  }
+ }
+}

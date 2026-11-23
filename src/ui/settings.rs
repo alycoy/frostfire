@@ -19,7 +19,7 @@ pub fn view(s: &App, p: P) -> El {
                 "set-menubar",
                 None,
                 "Show in menu bar",
-                Some("The room at a glance, and a menu to run the unit.".into()),
+                Some("Your device at a glance, and a menu to run it.".into()),
                 Switch::new(cfg.menu_bar)
                     .label("Show in menu bar")
                     .hide_label()
@@ -51,7 +51,7 @@ pub fn view(s: &App, p: P) -> El {
         .build(p.k);
     let secs = [30u64, 60, 120, 300];
     let refresh = SegmentedControl::new(&["30 s", "1 min", "2 min", "5 min"], secs.iter().position(|v| *v == cfg.refresh_secs))
-        .label("Check the unit every")
+        .label("Check devices every")
         .fit()
         .on_pick(move |s: &mut App, i, _| s.set_config(|c| c.refresh_secs = secs[i]))
         .build(p.k);
@@ -65,7 +65,7 @@ pub fn view(s: &App, p: P) -> El {
         p,
         vec![
             setting(p, "set-unit", None, "Temperature", None, unit),
-            setting(p, "set-refresh", None, "Check the unit every", Some("LG limits how often apps may ask. Your changes are sent at once.".into()), refresh),
+            setting(p, "set-refresh", None, "Check devices every", Some("LG limits how often apps may ask. Your changes are sent at once.".into()), refresh),
             setting(p, "set-fx", None, "Effects", Some("Frost on the dial while cooling, embers while heating. Still draws nothing when idle.".into()), fx),
         ],
     );
@@ -73,7 +73,7 @@ pub fn view(s: &App, p: P) -> El {
     let who = if s.demo {
         "A pretend account. Nothing is sent anywhere.".to_string()
     } else {
-        format!("LG ThinQ, {}. Your token is in the macOS Keychain.", cfg.country.clone().unwrap_or_default())
+        format!("LG ThinQ, {}. Your token is in your {}.", cfg.country.clone().unwrap_or_default(), crate::app::VAULT)
     };
     let leave = if s.demo { "Leave demo" } else { "Sign out" };
     let account = card(
@@ -88,17 +88,18 @@ pub fn view(s: &App, p: P) -> El {
         )],
     );
 
-    parts::page("settings")
-        .child(section(p, "general", "Menu bar & Dock", None, shell))
-        .child(section(p, "prefs", "General", None, general))
-        .child(section(p, "account", "Account", None, account))
-        .child(
-            row().px(parts::ROW_PX).gap(6.0).center_y().child(icon(&icons::LOCK, 12.0).color(p.faint())).child(
-                text("Frostfire talks only to LG's official ThinQ Connect API. No accounts, analytics or middlemen.")
-                    .font(p.k.ty.small)
-                    .color(p.faint())
-                    .wrap()
-                    .grow(1.0),
-            ),
-        )
+    // The menu bar item and the Dock are macOS's; elsewhere Frostfire is a window.
+    let mut page = parts::page("settings");
+    if cfg!(target_os = "macos") {
+        page = page.child(section(p, "general", "Menu bar & Dock", None, shell));
+    }
+    page.child(section(p, "prefs", "General", None, general)).child(section(p, "account", "Account", None, account)).child(
+        row().px(parts::ROW_PX).gap(6.0).center_y().child(icon(&icons::LOCK, 12.0).color(p.faint())).child(
+            text("Frostfire talks only to LG's official ThinQ Connect API. No accounts, analytics or middlemen.")
+                .font(p.k.ty.small)
+                .color(p.faint())
+                .wrap()
+                .grow(1.0),
+        ),
+    )
 }

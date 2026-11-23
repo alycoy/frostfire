@@ -1,12 +1,12 @@
 [package]
 name = "frostfire"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
-description = "A native, GPU-rendered macOS app for LG ThinQ air conditioners, built with Rune."
+description = "A native, GPU-rendered desktop app for every LG ThinQ appliance, built with Rune."
 repository = "https://github.com/alycoy/frostfire"
 readme = "README.md"
-keywords = ["lg", "thinq", "air-conditioner", "macos", "rune"]
+keywords = ["lg", "thinq", "smart-home", "desktop", "rune"]
 categories = ["gui"]
 publish = false
 
@@ -21,7 +21,7 @@ rune-fx = { git = "https://github.com/anomalyco/rune", rev = "bab9c8d9f4867565ef
 wgpu = { version = "~30.0.1", default-features = false, features = ["std", "parking_lot", "wgsl"] }
 
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 # HTTPS through the platform's TLS stack and trust store (Security.framework on macOS).
 ureq = { version = "3.4", default-features = false, features = ["native-tls"] }
 getrandom = "0.3"
@@ -41,8 +41,21 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 [target.'cfg(all(not(target_vendor = "apple"), not(target_os = "windows")))'.dependencies]
 wgpu = { version = "~30.0.1", default-features = false, features = ["vulkan"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# The token lives in the Secret Service (GNOME Keyring, KWallet), reached over pure-Rust D-Bus:
+# the same zbus 5 and async-io runtime Rune's accessibility already uses, so no libdbus.
+keyring-core = "1"
+zbus-secret-service-keyring-store = { version = "1", features = ["rt-async-io-crypto-rust"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 wgpu = { version = "~30.0.1", default-features = false, features = ["dx12"] }
+# The token lives in Windows Credential Manager.
+keyring-core = "1"
+windows-native-keyring-store = { version = "1", default-features = false }
+
+[build-dependencies]
+# Frostfire.exe's icon and version info (build.rs, Windows targets only).
+winresource = { version = "0.1", default-features = false }
 
 [patch.crates-io]
 winit = { git = "https://github.com/anomalyco/rune", rev = "bab9c8d9f4867565ef1737963ec8a9bc13eca10d" }

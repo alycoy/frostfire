@@ -46,3 +46,21 @@ pub fn mood(mode: Option<&str>, on: bool) -> Mood {
         _ => tint(Weather::Frost, 0x5ab8f5, 0x1f7cf0),
     }
 }
+
+/// The tint for any other device: by what it does, grey while off.
+pub fn kind_mood(kind: &crate::thinq::kinds::Kind, on: bool) -> Mood {
+    use crate::thinq::kinds::Family;
+    if !on {
+        return tint(Weather::Still, 0x8e8e93, 0xaeaeb2);
+    }
+    match (kind.family, kind.code) {
+        (Family::Air, "DEVICE_DEHUMIDIFIER" | "DEVICE_HUMIDIFIER") => tint(Weather::Mist, 0x2fb4c4, 0x5ad1d8),
+        (Family::Air, _) => tint(Weather::Breeze, 0x30b46c, 0x5fcf8a),
+        (Family::Heat, _) => tint(Weather::Fire, 0xff8a1f, 0xff4d2e),
+        (Family::Cold, _) => tint(Weather::Frost, 0x5ab8f5, 0x1f7cf0),
+        (Family::Kitchen, _) => tint(Weather::Still, 0xf2a43a, 0xff7a45),
+        (Family::Laundry, _) => tint(Weather::Aurora, 0x7a6cf5, 0x32c6c0),
+        (Family::Cleaning, _) => tint(Weather::Aurora, 0x5b8def, 0x7a6cf5),
+        (Family::Other, _) => tint(Weather::Frost, 0x5ab8f5, 0x1f7cf0),
+    }
+}

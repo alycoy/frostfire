@@ -4,9 +4,11 @@
 //! reverse-engineered endpoints, no LG password.
 
 pub mod client;
+pub mod kinds;
 pub mod model;
 pub mod region;
 pub mod secret;
+pub mod spec;
 
 pub use client::{ApiError, Client};
 pub use region::Country;

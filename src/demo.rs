@@ -1,22 +1,51 @@
-//! A pretend LG account with two air conditioners, for trying Frostfire without one and for
-//! the headless screenshots. It answers like ThinQ does, and the room drifts toward the
-//! target while a unit runs.
+//! A pretend LG home, for trying Frostfire without one and for the headless screenshots: two
+//! air conditioners, a purifier, a dehumidifier, a fridge, a washer and a robot vacuum. It
+//! answers like ThinQ does; the room drifts toward the target while an AC runs, and a washer
+//! started from the app starts running.
 
 use serde_json::{Value, json};
 
 use crate::thinq::model::{Device, Profile, State, Unit};
+use crate::thinq::spec;
 
 pub const LIVING: &str = "demo-living-room";
 pub const BEDROOM: &str = "demo-bedroom";
+pub const PURIFIER: &str = "demo-purifier";
+pub const DEHUMIDIFIER: &str = "demo-dehumidifier";
+pub const FRIDGE: &str = "demo-fridge";
+pub const WASHER: &str = "demo-washer";
+pub const ROBOT: &str = "demo-robot";
 
 pub fn devices() -> Vec<Device> {
+    let d = |id: &str, kind: &str, model: &str, alias: &str| Device { id: id.into(), kind: kind.into(), model: model.into(), alias: alias.into() };
     vec![
-        Device { id: LIVING.into(), kind: "DEVICE_AIR_CONDITIONER".into(), model: "DUALCOOL S3".into(), alias: "Living room".into() },
-        Device { id: BEDROOM.into(), kind: "DEVICE_AIR_CONDITIONER".into(), model: "ARTCOOL Mirror".into(), alias: "Bedroom".into() },
+        d(LIVING, "DEVICE_AIR_CONDITIONER", "DUALCOOL S3", "Living room"),
+        d(BEDROOM, "DEVICE_AIR_CONDITIONER", "ARTCOOL Mirror", "Bedroom"),
+        d(PURIFIER, "DEVICE_AIR_PURIFIER", "PuriCare 360", "Bedroom purifier"),
+        d(DEHUMIDIFIER, "DEVICE_DEHUMIDIFIER", "PuriCare Dehumidifier", "Basement"),
+        d(FRIDGE, "DEVICE_REFRIGERATOR", "InstaView", "Kitchen fridge"),
+        d(WASHER, "DEVICE_WASHER", "WashTower F4", "Washer"),
+        d(ROBOT, "DEVICE_ROBOT_CLEANER", "CordZero R9", "Robot vacuum"),
     ]
 }
 
+/// A generic demo device's fixture: `{"profile": …, "state": …}`.
+fn fixture(id: &str) -> Option<Value> {
+    let src = match id {
+        PURIFIER => include_str!("../tests/fixtures/devices/purifier.json"),
+        DEHUMIDIFIER => include_str!("../tests/fixtures/devices/dehumidifier.json"),
+        FRIDGE => include_str!("../tests/fixtures/devices/fridge.json"),
+        WASHER => include_str!("../tests/fixtures/devices/washer.json"),
+        ROBOT => include_str!("../tests/fixtures/devices/robot.json"),
+        _ => return None,
+    };
+    serde_json::from_str(src).ok()
+}
+
 pub fn profile_json(id: &str) -> Value {
+    if let Some(f) = fixture(id) {
+        return f["profile"].clone();
+    }
     let src = if id == BEDROOM { include_str!("../tests/fixtures/ac_legacy_profile.json") } else { include_str!("../tests/fixtures/ac_profile.json") };
     let mut p: Value = serde_json::from_str(src).unwrap_or(Value::Null);
     if id == LIVING {
@@ -35,6 +64,9 @@ pub fn profile(id: &str) -> Profile {
 
 /// The state a demo unit starts in.
 pub fn initial_state(id: &str) -> State {
+    if let Some(f) = fixture(id) {
+        return State(f["state"].clone());
+    }
     if id == BEDROOM {
         State(json!({
             "airConJobMode": {"currentJobMode": "COOL"},
@@ -49,21 +81,25 @@ pub fn initial_state(id: &str) -> State {
     }
 }
 
-/// A demo unit, simulated.
-pub struct DemoAc {
+/// A demo device, simulated.
+pub struct DemoDevice {
     pub state: State,
     room: f64,
+    ac: bool,
 }
 
-impl DemoAc {
-    pub fn new(id: &str) -> DemoAc {
+impl DemoDevice {
+    pub fn new(id: &str) -> DemoDevice {
         let state = initial_state(id);
         let room = state.temp("currentTemperature", Unit::C).unwrap_or(25.0);
-        DemoAc { state, room }
+        DemoDevice { state, room, ac: fixture(id).is_none() }
     }
 
     /// Moves the room toward the target for `dt` seconds of running.
     pub fn tick(&mut self, dt: f64) {
+        if !self.ac {
+            return;
+        }
         let on = self.state.power() == Some(true);
         let mode = self.state.mode().unwrap_or("COOL").to_string();
         let key = match mode.as_str() {
@@ -101,6 +137,9 @@ impl DemoAc {
     }
 
     pub fn control(&mut self, payload: &Value) {
+        if !self.ac {
+            return self.control_generic(payload);
+        }
         let mut p = payload.clone();
         // A relative timer that's set reports SET, as the real units do.
         for (res, flag, keys) in [
@@ -118,6 +157,30 @@ impl DemoAc {
             }
         }
         self.state.apply(&p);
+    }
+
+    /// Merges the change, and answers an operation the way the device would.
+    fn control_generic(&mut self, payload: &Value) {
+        spec::merge(&mut self.state.0, payload);
+        let ops = [
+            ("washerOperationMode", "START", "RUNNING"),
+            ("washerOperationMode", "STOP", "INITIAL"),
+            ("washerOperationMode", "POWER_OFF", "POWER_OFF"),
+            ("cleanOperationMode", "START", "WORKING"),
+            ("cleanOperationMode", "RESUME", "WORKING"),
+            ("cleanOperationMode", "PAUSE", "PAUSE"),
+            ("cleanOperationMode", "HOMING", "HOMING"),
+        ];
+        let loc = payload.get("location").cloned();
+        for (key, value, run) in ops {
+            if payload.pointer(&format!("/operation/{key}")).and_then(Value::as_str) == Some(value) {
+                let mut p = json!({"runState": {"currentState": run}});
+                if let Some(l) = &loc {
+                    p["location"] = l.clone();
+                }
+                spec::merge(&mut self.state.0, &p);
+            }
+        }
     }
 }
 
@@ -152,7 +215,7 @@ mod tests {
 
     #[test]
     fn a_running_unit_cools_the_room() {
-        let mut ac = DemoAc::new(LIVING);
+        let mut ac = DemoDevice::new(LIVING);
         let before = ac.state.temp("currentTemperature", Unit::C).unwrap();
         for _ in 0..60 {
             ac.tick(60.0);
@@ -162,8 +225,22 @@ mod tests {
     }
 
     #[test]
+    fn every_demo_device_loads_and_a_washer_starts() {
+        for d in devices() {
+            let spec = crate::thinq::spec::Spec::parse(&profile_json(&d.id));
+            assert!(!spec.zones.is_empty(), "{}", d.id);
+        }
+        let mut w = DemoDevice::new(WASHER);
+        let spec = crate::thinq::spec::Spec::parse(&profile_json(WASHER));
+        let op = spec.find("operation", "washerOperationMode").unwrap().path.clone();
+        w.control(&spec.payload(&op, json!("STOP")).unwrap());
+        let run = spec.find("runState", "currentState").unwrap().path.clone();
+        assert_eq!(crate::thinq::spec::read(&w.state.0, &run), Some(&json!("INITIAL")));
+    }
+
+    #[test]
     fn timers_report_set() {
-        let mut ac = DemoAc::new(LIVING);
+        let mut ac = DemoDevice::new(LIVING);
         let p = profile(LIVING);
         let payload = Command::TimerIn(Timer::Sleep, 120).payload(&p, &ac.state).unwrap();
         ac.control(&payload);

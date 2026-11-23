@@ -24,6 +24,21 @@ impl Device {
     pub fn is_ac(&self) -> bool {
         self.kind == DEVICE_AIR_CONDITIONER
     }
+
+    pub fn kind(&self) -> super::kinds::Kind {
+        super::kinds::kind(&self.kind)
+    }
+
+    /// What the app calls it: the name the owner gave it, else the model.
+    pub fn name(&self) -> String {
+        if !self.alias.is_empty() {
+            self.alias.clone()
+        } else if !self.model.is_empty() {
+            self.model.clone()
+        } else {
+            self.kind().name.to_string()
+        }
+    }
 }
 
 /// Parses `GET /devices`, keeping devices whose id is safe to use in a path.
@@ -98,10 +113,18 @@ pub struct Prop {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
-    Enum { read: Vec<String>, write: Vec<String> },
-    Range { read: Option<Range>, write: Option<Range> },
+    Enum {
+        read: Vec<String>,
+        write: Vec<String>,
+    },
+    Range {
+        read: Option<Range>,
+        write: Option<Range>,
+    },
     Bool,
     Number,
+    /// Free text (`"string"`), or a bare constant in the profile.
+    Text,
     Other,
 }
 
@@ -112,10 +135,10 @@ fn parse_range(v: Option<&Value>) -> Option<Range> {
     (min.is_finite() && max.is_finite() && min <= max).then(|| Range { min, max, step: n("step").filter(|s| *s > 0.0).unwrap_or(1.0) })
 }
 
-fn parse_prop(v: &Value) -> Prop {
+pub(crate) fn parse_prop(v: &Value) -> Prop {
     let Some(obj) = v.as_object() else {
         // A bare value in a profile is a read-only constant.
-        return Prop { readable: true, writable: false, kind: Kind::Other };
+        return Prop { readable: true, writable: false, kind: Kind::Text };
     };
     let mode = obj.get("mode").and_then(Value::as_array).cloned().unwrap_or_default();
     let has = |m: &str| mode.iter().any(|x| x.as_str() == Some(m));
@@ -135,6 +158,7 @@ fn parse_prop(v: &Value) -> Prop {
         }
         "boolean" => Kind::Bool,
         "number" => Kind::Number,
+        "string" => Kind::Text,
         _ => Kind::Other,
     };
     Prop { readable, writable, kind }
@@ -709,6 +733,14 @@ pub fn label(value: &str) -> String {
         "HIGH_POWER" => "High+",
         "POWER" => "Turbo",
         "NATURE" => "Natural",
+        "POWER_ON" => "On",
+        "POWER_OFF" => "Off",
+        "INITIAL" => "Ready",
+        "END" => "Done",
+        "CLOSE" => "Closed",
+        "DETECTING" => "Sensing the load",
+        "RESERVED" => "Scheduled",
+        "ON_WORKING" => "While running",
         _ => "",
     };
     if !known.is_empty() {

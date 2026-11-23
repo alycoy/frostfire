@@ -1,0 +1,119 @@
+name: Build
+
+# Builds Frostfire for every platform and uploads each platform's downloads as a `frostfire-*`
+# artifact. release.yml and dev.yml call it, then publish what it made:
+#   macOS:   Frostfire.dmg, Frostfire-macos.zip (one universal app for Apple silicon and Intel)
+#   Windows: Frostfire-windows-x64.zip, Frostfire-windows-arm64.zip
+#   Linux:   Frostfire-linux-x64.tar.gz
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit, branch or tag to build
+        type: string
+        required: true
+      test:
+        description: Run the tests before building
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        if: inputs.test
+        run: cargo test --locked
+      - name: Build universal binary
+        run: |
+          cargo build --locked --release --target aarch64-apple-darwin
+          cargo build --locked --release --target x86_64-apple-darwin
+          mkdir -p target/universal
+          lipo -create -output target/universal/frostfire \
+            target/aarch64-apple-darwin/release/frostfire \
+            target/x86_64-apple-darwin/release/frostfire
+          lipo -info target/universal/frostfire
+      - name: Bundle and package
+        run: |
+          FROSTFIRE_BIN=target/universal/frostfire scripts/bundle.sh
+          scripts/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frostfire-macos
+          path: |
+            dist/Frostfire.dmg
+            dist/Frostfire-macos.zip
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+          # Cross-compiled on the x64 runner with Visual Studio's Arm64 build tools.
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Test
+        if: inputs.test && matrix.arch == 'x64'
+        run: cargo test --locked
+      - name: Build
+        run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Package
+        run: scripts/package-windows.sh ${{ matrix.arch }} target/${{ matrix.target }}/release/frostfire.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frostfire-windows-${{ matrix.arch }}
+          path: dist/Frostfire-windows-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  linux:
+    # The oldest supported Ubuntu, so the binary runs on any distribution with glibc 2.35 or newer.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: System packages
+        run: scripts/linux-deps.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        if: inputs.test
+        run: cargo test --locked
+      - name: Build
+        run: cargo build --locked --release
+      - name: Package
+        run: scripts/package-linux.sh x64 target/release/frostfire
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frostfire-linux-x64
+          path: dist/Frostfire-linux-x64.tar.gz
+          if-no-files-found: error

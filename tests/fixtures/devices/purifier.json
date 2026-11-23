@@ -1,0 +1,191 @@
+{
+ "profile": {
+  "property": {
+   "airPurifierJobMode": {
+    "currentJobMode": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "CLEAN",
+       "AUTO",
+       "CIRCULATOR",
+       "DUAL_CLEAN"
+      ],
+      "w": [
+       "CLEAN",
+       "AUTO",
+       "CIRCULATOR",
+       "DUAL_CLEAN"
+      ]
+     }
+    }
+   },
+   "operation": {
+    "airPurifierOperationMode": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "POWER_ON",
+       "POWER_OFF"
+      ],
+      "w": [
+       "POWER_ON",
+       "POWER_OFF"
+      ]
+     }
+    }
+   },
+   "airFlow": {
+    "windStrength": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "LOW",
+       "MID",
+       "HIGH",
+       "POWER",
+       "AUTO"
+      ],
+      "w": [
+       "LOW",
+       "MID",
+       "HIGH",
+       "POWER",
+       "AUTO"
+      ]
+     }
+    }
+   },
+   "airQualitySensor": {
+    "monitoringEnabled": {
+     "type": "enum",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": [
+       "ON_WORKING",
+       "ALWAYS"
+      ],
+      "w": [
+       "ON_WORKING",
+       "ALWAYS"
+      ]
+     }
+    },
+    "PM1": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    },
+    "PM2": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    },
+    "PM10": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    },
+    "humidity": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    },
+    "totalPollutionLevel": {
+     "type": "enum",
+     "mode": [
+      "r"
+     ],
+     "value": {
+      "r": [
+       "GOOD",
+       "NORMAL",
+       "BAD",
+       "VERY_BAD"
+      ]
+     }
+    }
+   },
+   "sleepTimer": {
+    "relativeHourToStop": {
+     "type": "range",
+     "mode": [
+      "r",
+      "w"
+     ],
+     "value": {
+      "r": {
+       "min": 1,
+       "max": 12,
+       "step": 1
+      },
+      "w": {
+       "min": 1,
+       "max": 12,
+       "step": 1
+      }
+     }
+    },
+    "relativeMinuteToStop": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    }
+   },
+   "filterInfo": {
+    "filterRemainPercent": {
+     "type": "number",
+     "mode": [
+      "r"
+     ]
+    }
+   }
+  }
+ },
+ "state": {
+  "airPurifierJobMode": {
+   "currentJobMode": "AUTO"
+  },
+  "operation": {
+   "airPurifierOperationMode": "POWER_ON"
+  },
+  "airFlow": {
+   "windStrength": "AUTO"
+  },
+  "airQualitySensor": {
+   "monitoringEnabled": "ALWAYS",
+   "PM1": 4,
+   "PM2": 7,
+   "PM10": 12,
+   "humidity": 46,
+   "totalPollutionLevel": "GOOD"
+  },
+  "sleepTimer": {
+   "relativeHourToStop": 0,
+   "relativeMinuteToStop": 0
+  },
+  "filterInfo": {
+   "filterRemainPercent": 83
+  }
+ }
+}
