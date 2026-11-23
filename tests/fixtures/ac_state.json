@@ -1,0 +1,16 @@
+{
+  "airConJobMode": {"currentJobMode": "COOL"},
+  "operation": {"airConOperationMode": "POWER_ON", "airCleanOperationMode": "STOP"},
+  "temperatureInUnits": [
+    {"currentTemperature": 26.5, "targetTemperature": 23, "unit": "C"},
+    {"currentTemperature": 80, "targetTemperature": 73, "unit": "F"}
+  ],
+  "airFlow": {"windStrength": "MID"},
+  "powerSave": {"powerSaveEnabled": false},
+  "windDirection": {"rotateUpDown": true, "rotateLeftRight": false},
+  "display": {"light": "ON"},
+  "timer": {"relativeStartTimer": "UNSET", "relativeStopTimer": "SET", "relativeHourToStop": 1, "relativeMinuteToStop": 30},
+  "sleepTimer": {"relativeStopTimer": "UNSET"},
+  "filterInfo": {"usedTime": 250, "filterLifetime": 1000},
+  "airQualitySensor": {"humidity": 48}
+}

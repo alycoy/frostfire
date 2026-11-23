@@ -1,0 +1,5 @@
+[
+  {"deviceId": "0123abcd-ef45-6789-abcd-0123456789ab", "deviceInfo": {"deviceType": "DEVICE_AIR_CONDITIONER", "modelName": "S3-W12JA3AA", "alias": "Bedroom", "reportable": true}},
+  {"deviceId": "fridge_1", "deviceInfo": {"deviceType": "DEVICE_REFRIGERATOR", "modelName": "GBB72", "alias": "Fridge"}},
+  {"deviceId": "../evil", "deviceInfo": {"deviceType": "DEVICE_AIR_CONDITIONER", "alias": "Bad id"}}
+]

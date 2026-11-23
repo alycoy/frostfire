@@ -1,0 +1,12 @@
+{
+  "property": {
+    "airConJobMode": {"currentJobMode": {"type": "enum", "mode": ["r", "w"], "value": {"r": ["COOL", "FAN"], "w": ["COOL", "FAN"]}}},
+    "operation": {"airConOperationMode": {"type": "enum", "mode": ["w"], "value": {"w": ["POWER_ON", "POWER_OFF"]}}},
+    "temperature": {
+      "currentTemperature": {"type": "number", "mode": ["r"]},
+      "targetTemperature": {"type": "range", "mode": ["r", "w"], "value": {"r": {"min": 18, "max": 30, "step": 1}, "w": {"min": 18, "max": 30, "step": 1}}},
+      "unit": {"type": "enum", "mode": ["r"], "value": {"r": ["C"]}}
+    },
+    "airFlow": {"windStrengthDetail": {"type": "enum", "mode": ["r", "w"], "value": {"r": ["SLOW", "LOW", "HIGH"], "w": ["SLOW", "LOW", "HIGH"]}}}
+  }
+}

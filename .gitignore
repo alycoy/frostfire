@@ -1,0 +1,8 @@
+/target
+/dist
+*.app
+.DS_Store
+*.p12
+*.pem
+.env
+profiles*.txt

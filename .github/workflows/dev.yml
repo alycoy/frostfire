@@ -1,0 +1,46 @@
+name: Dev build
+
+# Every push to main rebuilds the `dev` prerelease: the newest Frostfire, for testers.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dev-build
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build universal binary
+        run: |
+          cargo build --locked --release --target aarch64-apple-darwin
+          cargo build --locked --release --target x86_64-apple-darwin
+          mkdir -p target/universal
+          lipo -create -output target/universal/frostfire \
+            target/aarch64-apple-darwin/release/frostfire \
+            target/x86_64-apple-darwin/release/frostfire
+      - name: Bundle and package
+        run: |
+          FROSTFIRE_BIN=target/universal/frostfire scripts/bundle.sh
+          scripts/package.sh
+          shasum -a 256 dist/Frostfire.dmg dist/Frostfire-macos.zip | tee dist/SHA256SUMS.txt
+      - name: Publish dev prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dev --cleanup-tag --yes >/dev/null 2>&1 || true
+          gh release create dev dist/Frostfire.dmg dist/Frostfire-macos.zip dist/SHA256SUMS.txt \
+            --prerelease --target "$GITHUB_SHA" --title "Dev build" \
+            --notes "The newest build of main ($(git rev-parse --short HEAD)). Not a release: it may break."
