@@ -172,7 +172,25 @@ impl App {
         {
             return Some(serde_json::json!(v));
         }
-        spec::read(&self.state.as_ref()?.0, path).cloned()
+        let state = &self.state.as_ref()?.0;
+        if let Some(v) = spec::read(state, path) {
+            return Some(v.clone());
+        }
+        // A fridge reports `targetTemperatureC` only; shown in °F, its `…F` twin is converted.
+        let f = self.spec.as_ref()?.field(path)?;
+        let unit = f.temp_unit()?;
+        let other = if unit == Unit::C { Unit::F } else { Unit::C };
+        let mut twin = path.clone();
+        match &mut twin.item {
+            Some((tag, u)) if tag == "unit" => *u = other.as_str().to_string(),
+            _ => {
+                let stem = path.key.strip_suffix(unit.as_str())?;
+                twin.key = format!("{stem}{}", other.as_str());
+            }
+        }
+        let x = spec::read(state, &twin)?.as_f64()?;
+        let v = Unit::convert(x, other, unit);
+        Some(serde_json::json!(f.range().map(|r| r.snap(v)).unwrap_or(v.round())))
     }
 
     pub fn current_device(&self) -> Option<&Device> {
@@ -439,6 +457,11 @@ impl App {
 
     /// Sets any device's property, checked against its profile first.
     pub fn set(&mut self, path: &Path, value: Value) {
+        // A number still waiting on another field goes first, so a start sent right after
+        // setting a temperature runs with it.
+        if let Some((other, pv, _)) = self.pending_set.take_if(|(p, _, _)| p != path) {
+            self.set(&other, serde_json::json!(pv));
+        }
         let (Some(device), Some(spec), Some(state)) = (self.device.clone(), self.spec.as_ref(), self.state.as_mut()) else {
             return;
         };
@@ -722,6 +745,29 @@ mod tests {
         assert_eq!(s.in_flight.len(), 1, "the fridge change went out");
         assert_eq!(s.value(&fields[0]), Some(serde_json::json!(4)));
         assert_eq!(s.pending_set.as_ref().map(|p| &p.0), Some(&fields[1]));
+    }
+
+    #[test]
+    fn fahrenheit_reads_a_celsius_only_fridge() {
+        let mut s = demo_app(crate::demo::FRIDGE);
+        s.config.unit = "F".into();
+        let spec = s.spec.clone().unwrap();
+        let f = spec.fields().find(|f| f.path.key == "targetTemperatureF").unwrap().path.clone();
+        assert_eq!(s.value(&f).and_then(|v| v.as_f64()), Some(37.0), "3 °C");
+        s.step(&f, 1.0);
+        assert_eq!(s.pending_set.as_ref().map(|p| p.1), Some(38.0));
+    }
+
+    #[test]
+    fn an_action_sends_a_waiting_number_first() {
+        let mut s = demo_app(crate::demo::WASHER);
+        let spec = s.spec.clone().unwrap();
+        let delay = spec.find("timer", "relativeHourToStart").unwrap().path.clone();
+        let op = spec.find("operation", "washerOperationMode").unwrap().path.clone();
+        s.step(&delay, 1.0);
+        s.act(&op, "START");
+        assert!(s.pending_set.is_none());
+        assert_eq!(s.in_flight.len(), 2);
     }
 
     #[test]
